@@ -20,13 +20,14 @@ Jakob Steglich, Stephan Poppe \
 
 ## 🔍 Overview
 
-Quantitative text analysis depends on high-quality corpora, yet keyword-based data collection often introduces irrelevant documents that weaken validity. This project demonstrates how active learning combined with a transformer-based classifier can iteratively refine text corpora by filtering out irrelevant content.
-Using German newspaper articles on depression and schizophrenia as a case study, the approach achieves strong performance (F1 ≈ 0.8) with as few as 100–150 labeled snippets, significantly reducing annotation effort. Compared to random and weakly supervised sampling, active learning improves both efficiency and construct validity while encouraging clearer inclusion criteria and handling of edge cases.
-Results show that filtering non-medical articles has minimal impact on depression-related measures but increases observed stigmatization in schizophrenia coverage. Overall, this method enables scalable, accurate corpus validation with minimal preprocessing.
-
 <div align="center">
 <img src="figures/workflow-graphic.png" style="width:40%;" />
 </div>
+
+
+Quantitative text analysis depends on high-quality corpora, yet keyword-based data collection often introduces irrelevant documents that weaken validity. This project demonstrates how active learning combined with a transformer-based classifier can iteratively refine text corpora by filtering out irrelevant content.
+Using German newspaper articles on depression and schizophrenia as a case study, the approach achieves strong performance (F1 ≈ 0.8) with as few as 100–150 labeled snippets, significantly reducing annotation effort. Compared to random and weakly supervised sampling, active learning improves both efficiency and construct validity while encouraging clearer inclusion criteria and handling of edge cases.
+Results show that filtering non-medical articles has minimal impact on depression-related measures but increases observed stigmatization in schizophrenia coverage. Overall, this method enables scalable, accurate corpus validation with minimal preprocessing.
 
 
 ## 📂 Repository Structure
