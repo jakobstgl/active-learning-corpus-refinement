@@ -1,0 +1,439 @@
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+library(arrow)
+library(lsr)
+library(rcompanion)
+library(scales)
+library(patchwork)
+library(effectsize)
+library(effsize)
+library(GGally)
+```
+
+
+# Load corpus with precomputed stigma scores 
+```{r}
+corpus <- read_parquet("../data/data_with_stigmascores.parquet") |> 
+    filter(id_subcorpus == "psyC" | id_subcorpus == "psyB")
+```
+
+
+# Load processed active learning predictions
+```{r}
+depression_predictions <- read_csv("../data/active_learning/predictions/1105_predictions_depression_processed.csv") |> 
+    select(-1)
+schizophrenia_predictions <- read_csv("../data/active_learning/predictions/1105_predictions_schizophrenia_processed.csv") |> 
+    select(-1)
+```
+
+
+# Join predictions on corpus
+```{r}
+corpus_depression <- corpus |> 
+    left_join(depression_predictions, by = c("id" = "id")) |> 
+    filter(!is.na(predicted_class)) # filter out snippets that were not included in the active learning process (i.e., those with NA predictions)
+
+depression_combined <- bind_rows(
+    corpus_depression |>  mutate(group = "Unfiltered"),
+    corpus_depression |>  filter(predicted_class == 1) |>  mutate(group = "Medical"),
+    corpus_depression |>  filter(predicted_class == 0) |>  mutate(group = "Non-Medical")
+) |> 
+    mutate(
+        group = as_factor(group)
+    )
+
+corpus_schizophrenia <- corpus |> 
+    left_join(schizophrenia_predictions, by = c("id" = "id")) |> 
+    filter(!is.na(predicted_class))
+
+schizophrenia_combined <- bind_rows(
+    corpus_schizophrenia |>  mutate(group = "Unfiltered"),
+    corpus_schizophrenia |>  filter(predicted_class == 1) |>  mutate(group = "Medical"),
+    corpus_schizophrenia |>  filter(predicted_class == 0) |>  mutate(group = "Non-Medical")
+)
+
+```
+
+# Get examples with highest confidence for each disease to showcase
+```{r}
+
+# Depression non-medical
+dep_nonmedical <- depression_combined |> 
+    filter(group == "Non-Medical") |> 
+    arrange(desc(prob_class_zero)) |> 
+    slice_head(n = 5) |> 
+    pull(text)
+
+dep_nonmedical
+
+# Schizophrenia non-medical
+schiz_nonmedical <- schizophrenia_combined |> 
+    filter(group == "Non-Medical") |> 
+    arrange(desc(prob_class_zero)) |> 
+    slice_head(n = 5) |> 
+    pull(text)
+
+schiz_nonmedical
+
+```
+
+
+# Plot the label distribution of the classifier predictions for both diseases
+```{r}
+
+depression_predictions |> 
+    group_by(predicted_class) |> 
+    summarise(
+        n = n()
+    ) |> 
+    mutate(
+        percent = n / sum(n) * 100,
+        label = case_when(
+            predicted_class == 0 ~ "Non-Medical",
+            predicted_class == 1 ~ "Medical"
+        )
+    ) |> 
+    ggplot(aes(x = label, y = percent, fill = label)) +
+    geom_bar(stat = "identity", color = "black", alpha = 0.7) +
+    labs(
+        title = "Depression: Distribution of Predicted Labels",
+        x = "Predicted Label",
+        y = "Percentage (%)"
+    ) +
+    theme_minimal() +
+    theme(
+        legend.position = "none",
+        text = element_text(size = 9),
+        axis.text.x = element_text(color = "black", size = 9),
+        axis.text.y = element_text(color = "black", size = 9)
+    ) +
+    scale_fill_brewer(palette = "Set1") +
+    scale_y_continuous(labels = label_number(scale_cut = cut_short_scale())) -> dep_label_dist_plot
+
+dep_label_dist_plot
+
+
+schizophrenia_predictions |> 
+    group_by(predicted_class) |> 
+    summarise(
+        n = n()
+    ) |> 
+    mutate(
+        percent = n / sum(n) * 100,
+        label = case_when(
+            predicted_class == 0 ~ "Non-Medical",
+            predicted_class == 1 ~ "Medical"
+        )
+    ) |> 
+    ggplot(aes(x = label, y = percent, fill = label)) +
+    geom_bar(stat = "identity", color = "black", alpha = 0.7) +
+    labs(
+        title = "Schizophrenia: Distribution of Predicted Labels",
+        x = "Predicted Label",
+        y = "Percentage (%)"
+    ) +
+    theme_minimal() +
+    theme(
+        legend.position = "none",
+        text = element_text(size = 9),
+        axis.text.x = element_text(color = "black", size = 9),
+        axis.text.y = element_text(color = "black", size = 9)
+    ) +
+    scale_fill_brewer(palette = "Set1") +
+    scale_y_continuous(labels = label_number(scale_cut = cut_short_scale())) -> dep_label_dist_plot
+
+dep_label_dist_plot
+
+```
+
+
+# Distribution Plots
+These plots show Kernel-Density Estimates for the distribution of stigma scores for the three groups (Unfiltered, Medical, Non-Medical) for both diseases.
+```{r}
+schizophrenia_combined |> 
+    mutate(
+        group = factor(group, levels = c("Non-Medical", "Unfiltered", "Medical"))
+    ) |> 
+    ggplot(aes(x = stigma_score, color = group, fill = group)) +
+    geom_density(alpha = 0.5) +
+    labs(
+        title = "Schizophrenia",
+        x = "Stigma Score",
+         y = "Density",
+         fill = "Included Snippets",
+         color = "Included Snippets"
+        ) +
+    theme_classic() +
+    theme(
+        legend.position = "bottom",
+        plot.title = element_text(size = 10),
+        text = element_text(size = 9),
+        legend.title = element_blank(),
+        legend.text = element_text(size = 9),
+        legend.key.size = unit(0.8,"line"),
+        axis.text.x = element_text(color = "black", size = 9),
+        axis.text.y = element_text(color = "black", size = 9)
+        ) +
+    scale_fill_manual(values = c("grey", "#377EB8", "red")) +
+    scale_color_manual(values = c("grey", "#377EB8", "red")) -> schiz_kde_plot
+
+schiz_kde_plot
+
+#ggsave("schiz_kde_plot.pdf", plot = schiz_kde_plot, width = 3.25, height = 2.75, dpi = 300)
+
+depression_combined |> 
+    mutate(
+        group = factor(group, levels = c("Non-Medical", "Unfiltered", "Medical"))
+    ) |> 
+    ggplot(aes(x = stigma_score, fill = group, color = group)) +
+    geom_density(alpha = 0.5) +
+    labs(x = "Stigma Score",
+         title = "Depression",
+         y = "Density",
+         fill = "Included Snippets",
+         color = "Included Snippets") +
+    theme_classic(
+        #base_family = "Times New Roman"
+    ) +
+    theme(
+        legend.position = "bottom",
+        text = element_text(size = 9),
+        plot.title = element_text(size = 10),
+        legend.title = element_blank(),
+        legend.text = element_text(size = 9),
+        legend.key.size = unit(0.8,"line"),
+        axis.text.x = element_text(color = "black", size = 9),
+        axis.text.y = element_text(color = "black", size = 9),
+        panel.grid.major = element_blank(),  # darker major grid lines
+        panel.grid.minor = element_blank(),  # lighter minor grid lines
+        panel.background = element_rect(fill = "white")
+        ) +
+    scale_fill_manual(values = c("grey", "#377EB8", "red")) +
+    scale_color_manual(values = c("grey", "#377EB8", "red")) +
+    guides(fill = guide_legend(override.aes = list(size = 2)))-> dep_kde_plot
+
+dep_kde_plot
+
+#ggsave("dep_kde_plot.pdf", plot = dep_kde_plot, width = 3.25, height = 2.75, dpi = 300)
+
+```
+# Cohen's d Effect Sizes
+```{r}
+schiz_distribution_table <- schizophrenia_combined |> 
+    group_by(group) |> 
+    summarise(
+        mean = mean(stigma_score),
+        sd = sd(stigma_score),
+        n = n(),
+        percent = n() / nrow(filter(schizophrenia_combined, group == "Unfiltered")) * 100
+    )
+
+dep_distribution_table <- depression_combined |> 
+    group_by(group) |> 
+    summarise(
+        mean = mean(stigma_score),
+        sd = sd(stigma_score),
+        n = n(),
+        percent = n() / nrow(filter(depression_combined, group == "Unfiltered")) * 100
+    )
+
+
+distribution_table <- bind_rows(
+    schiz_distribution_table |> mutate(disease = "Schizophrenia"),
+    dep_distribution_table |> mutate(disease = "Depression")
+) |> 
+    mutate(
+        disease = as_factor(disease),
+        group = as_factor(group)
+    )
+```
+
+
+# Pairwise comparisons of effect sizes
+```{r}
+cohen_d_list <- list(
+    depression_medical_all <- cohens_d(
+      x = filter(depression_combined, group == "Medical")$stigma_score,
+      y = filter(depression_combined, group == "Unfiltered")$stigma_score,
+      method = "pooled"
+    ),
+    
+    schizophrenia_medical_all <- cohens_d(
+      x = filter(schizophrenia_combined, group == "Medical")$stigma_score,
+      y = filter(schizophrenia_combined, group == "Unfiltered")$stigma_score,
+      method = "pooled"
+    ),
+    
+    schizophrenia_all_depression_all <- cohens_d(
+      x = filter(schizophrenia_combined, group == "Unfiltered")$stigma_score,
+      y = filter(depression_combined, group == "Unfiltered")$stigma_score,
+      method = "pooled"
+    ),
+
+    schizophrenia_medical_depression_medical <- cohens_d(
+      x = filter(schizophrenia_combined, group == "Medical")$stigma_score,
+      y = filter(depression_combined, group == "Medical")$stigma_score,
+      method = "pooled"
+    )
+)
+
+
+cohen_d_df <- cohen_d_list |> 
+    enframe() |> 
+    unnest_wider("value") |> 
+    mutate(
+        disease = c("depression", "schizophrenia", "both", "both"),
+        comparison = c(
+            "Depression\n (Unfiltered vs Medical)", 
+            "Schizophrenia\n (Unfiltered vs Medical)", 
+            "Schizophrenia vs\n Depression (Unfiltered)", 
+            "Schizophrenia vs\n Depression (Medical)"
+            )
+    ) |> 
+    mutate(
+        comparison = factor(comparison, levels = rev(unique(comparison)))
+    )
+
+ggplot(cohen_d_df, aes(x = comparison, y = Cohens_d, color = disease)) +
+    geom_point(size = 3, shape = 15) +
+    geom_linerange(aes(ymin = CI_low, ymax = CI_high)) +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+    coord_flip() +
+    labs(y = "Cohen's d", x = "") +
+    theme_minimal() +
+    scale_color_manual(values = c("depression" = "#377EB8", "schizophrenia" = "#E41A1C", "both" = "#4DAF4A")) +
+    scale_y_continuous(limits = c(0, 0.7)) +
+    theme(
+        text = element_text(size = 9, color = "black"),
+        legend.position = "none",
+        panel.grid.major = element_line(size = 0.05, color = "grey40"),
+        panel.grid.minor = element_line(size = 0.05, color = "grey40"),
+        panel.background = element_rect(fill = "white"),
+        legend.background = element_rect(fill = "white", color = "black", linewidth = 0.4),
+        axis.text.x = element_text(color = "black", size = 10),
+        axis.text.y = element_text(color = "black", size = 7)
+    ) +
+    guides(size = "none") -> cohen_d_plot
+
+cohen_d_plot
+
+#ggsave("effect_sizes_cohen.pdf", plot = cohen_d_plot, width = 3.25, height = 2.75, units = "in", dpi = 300)
+```
+
+# Visualise Results of the Hyperparameter Optimisation Analysis
+```{r}
+
+schiz_study <- read_csv("../data/1005_schiz_study.csv") |> 
+    select(-1, -8) |> 
+    rename(f1 = value,
+           batch_size = params_batch_size,
+           learning_rate = params_body_learning_rate,
+           max_steps = params_max_steps,
+           num_iterations = params_num_iterations) |> 
+    mutate(
+        f1_dup = case_when(
+            f1 > 0.8 ~ "high",
+            f1 > 0.75 ~ "mid",
+            .default = "low"
+        ) |> 
+            as_factor()
+    )
+
+dep_study <- read_csv("../data/1005_dep_study.csv") |> 
+    select(-1, -8) |> 
+    rename(f1 = value,
+           batch_size = params_batch_size,
+           learning_rate = params_body_learning_rate,
+           max_steps = params_max_steps,
+           num_iterations = params_num_iterations) |> 
+    mutate(
+        f1_dup = case_when(
+            f1 > 0.8 ~ "high",
+            f1 > 0.75 ~ "mid",
+            .default = "low"
+        ) |> 
+            as_factor()
+    )
+
+
+schiz_best_row <- schiz_study |> 
+  filter(f1 == max(f1))
+
+ggparcoord(
+  data = schiz_study,
+  columns = 2:6,
+  order = c(2,3,4,5,6),
+  groupColumn = 7,
+  scale = "uniminmax",
+  showPoints = F,
+  alphaLines = 0.7
+  ) +
+  scale_color_manual(
+    values = c("low" = "grey70", "mid" = "orange", "high" = "red")
+  ) +
+  scale_size(range = c(0.1, 1)) +
+  labs(
+    title = "Schizophrenia",
+    y = "Normalized Values",
+    color = "F1-score",
+    size = "F1-score"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, color = "black"),
+    plot.title = element_text(size = 10),
+    axis.text.y = element_text(color = "black"),
+    text = element_text(size = 10),
+    axis.title.y = element_text(size = 9, color = "black"),
+    axis.title.x = element_blank(),
+    legend.key.size = unit(0.5, "cm"),
+    legend.position = "bottom",
+    panel.background = element_rect(fill = "white"),
+    panel.grid.major = element_line(size = 0.05, color = "grey80"), 
+    panel.grid.minor = element_line(size = 0.05, color = "grey80")
+    ) -> schiz_hpo_plot
+
+schiz_hpo_plot
+
+
+#ggsave("hpo_schizophrenia.pdf", plot = schiz_hpo_plot, width = 3.25, height = 2.75, units = "in", dpi = 300)
+
+ggparcoord(
+  data = dep_study,
+  columns = 2:6,
+  order = c(2,3,4,5,6),
+  groupColumn = 7,
+  scale = "uniminmax",
+  scaleSummary = "robust",
+  showPoints = F,
+  alphaLines = 0.7
+) +
+  scale_color_manual(
+    values = c("low" = "grey70", "mid" = "orange", "high" = "red")
+  ) +
+  labs(
+    title = "Depression",
+    y = "Normalized Values",
+    size = "F1-score",
+    color = "F1-score"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 10),
+    axis.text.x = element_text(angle = 45, hjust = 1, color = "black"),
+    axis.text.y = element_text(color = "black"),
+    text = element_text(size = 10),
+    axis.title.y = element_text(size = 9, color = "black"),
+    axis.title.x = element_blank(),
+    legend.key.size = unit(0.5, "cm"),
+    legend.position = "bottom",
+    panel.background = element_rect(fill = "white"),
+    panel.grid.major = element_line(size = 0.05, color = "grey80"),
+    panel.grid.minor = element_line(size = 0.05, color = "grey80")
+    ) -> dep_hpo_plot
+
+dep_hpo_plot
+
+#ggsave("hpo_depression.pdf", plot = dep_hpo_plot, width = 3.25, height = 2.75, units = "in", dpi = 300)
+```
+

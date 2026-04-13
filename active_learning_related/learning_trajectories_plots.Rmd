@@ -1,0 +1,255 @@
+```{r}
+library(tidyverse)
+```
+
+
+```{r}
+wrangle_learning_history <- function(path, disease_name, method_name){
+    report <- read_csv(path) |> 
+        select(number_labeled, macro_f1 = `macro avg.f1-score`, minority_f1 = `0.f1-score`) |> 
+        mutate(
+            disease = disease_name,
+            method = method_name
+        )
+    return(report)
+}
+```
+
+
+```{r message=FALSE}
+schiz_history_al <- wrangle_learning_history("data/1005_schiz_learner_history_with_report.csv", "Schizophrenia", "Active Learning")
+schiz_history_rnd <- wrangle_learning_history("data/2025_12_21_schiz_results_random_with_report.csv", "Schizophrenia", "Random Sampling")
+
+dep_history_al <- wrangle_learning_history("data/1005_dep_learner_history_with_report.csv", "Depression", "Active Learning")
+dep_history_rnd <- wrangle_learning_history("data/2025_12_21_dep_results_random_with_report.csv", "Depression", "Random Sampling")
+
+
+schiz_history_boot <- read_csv("data/active_learning/2025_12_results/2112_schizophrenia_bootstrap_results.csv") |> 
+    select(number_labeled, macro_f1 = f1_macro, minority_f1 = f1_minority) |> 
+    mutate(
+        disease = "Schizophrenia",
+        method = "Bootstrapped Sampling"
+    )
+
+dep_history_boot <- read_csv("data/active_learning/2025_12_results/2112_depression_bootstrap_results.csv") |> 
+    select(number_labeled, macro_f1 = f1_macro, minority_f1 = f1_minority) |> 
+    mutate(
+        disease = "Depression",
+        method = "Bootstrapped Sampling"
+    )
+
+
+schiz_history_combined <- schiz_history_al |>
+    rbind(schiz_history_rnd) |> 
+    rbind(schiz_history_boot) |>
+    mutate(
+        disease = factor(disease, levels = c("Schizophrenia", "Depression")),
+        method = factor(method, levels = c("Active Learning", "Random Sampling", "Bootstrapped Sampling"))
+        )
+
+dep_history_combined <- dep_history_al |>
+    rbind(dep_history_rnd) |>
+    rbind(dep_history_boot) |> 
+    mutate(
+        disease = factor(disease, levels = c("Schizophrenia", "Depression")),
+        method = factor(method, levels = c("Active Learning", "Random Sampling", "Bootstrapped Sampling"))
+        )
+
+history_combined <- dep_history_combined |>
+    rbind(schiz_history_combined) |> 
+    mutate(
+        disease = factor(disease, levels = c("Depression", "Schizophrenia"))
+        )
+```
+
+# F1-Macro Plots
+```{r}
+schiz_history_combined |>
+    ggplot(aes(x = number_labeled, y = macro_f1, color = method, shape = method, size = number_labeled)) +
+    geom_point() +
+    scale_size(range = c(2, 4)) +
+    geom_line(size = 0.5) +
+    labs(x = "Number of Labeled Samples",
+         y = "Macro F1-Score",
+         color = "Method",
+         shape = "Method") +
+    theme_minimal() +
+    theme(
+        legend.position = c(0.8, 0.2),
+        panel.grid.major = element_line(size = 0.05, color = "grey40"), 
+        panel.grid.minor = element_line(size = 0.05, color = "grey40"),  # lighter minor grid lines
+        panel.background = element_rect(fill = "white"),
+        legend.background = element_rect(fill = "white", linewidth = 0.2),
+        text = element_text(size = 9),
+        axis.text.x = element_text(color = "black", size = 9),
+        axis.text.y = element_text(color = "black", size = 9)
+    ) +
+    guides(size = "none") +
+    scale_color_brewer(palette = "Set1") +
+    scale_x_continuous(breaks = seq(0, 400, by = 50)) +
+    ylim(0, 1) -> schiz_history_plot_f1macro
+
+schiz_history_plot_f1macro
+
+#ggsave("plots/20260208_schiz_learning_history_f1macro.pdf", plot = schiz_history_plot_f1macro, width = 3.25, height = 2.75, units = "in", dpi = 300)
+
+
+dep_history_combined |>
+    ggplot(aes(x = number_labeled, y = macro_f1, color = method, shape = method, size = number_labeled)) +
+    geom_point() +
+    scale_size(range = c(2, 4)) +
+    geom_line(size = 0.5) +
+    labs(x = "Number of Labeled Samples",
+         y = "Macro F1-Score",
+         color = "Method",
+         shape = "Method") +
+    theme_minimal() +
+    theme(
+        legend.position = "bottom",
+        panel.grid.major = element_line(size = 0.05, color = "grey40"),  # darker major grid lines
+        panel.grid.minor = element_line(size = 0.05, color = "grey40"),  # lighter minor grid lines
+        panel.background = element_rect(fill = "white"),
+        #legend.background = element_rect(fill = "white", linewidth = 0.2),
+        text = element_text(size = 9),
+        axis.text.x = element_text(color = "black", size = 9),
+        axis.text.y = element_text(color = "black", size = 9)
+    ) +
+    guides(size = "none") +
+    scale_color_brewer(palette = "Set1") +
+    scale_x_continuous(breaks = seq(0, 400, by = 50)) +
+    ylim(0, 1) -> dep_history_plot_f1macro
+
+
+dep_history_plot_f1macro
+
+#ggsave("plots/20251222_dep_learning_history_f1macro.pdf", plot = dep_learning_history_plot, width = 4, height = 2.75, units = "in", dpi = 300)
+
+
+history_combined |>
+    ggplot(aes(x = number_labeled, y = macro_f1, color = method, shape = method, size = number_labeled)) +
+    geom_point() +
+    scale_size(range = c(2, 4)) +
+    geom_line(size = 0.5) +
+    labs(x = "Number of Labeled Samples",
+         y = "Macro F1-Score",
+         color = "Method",
+         shape = "Method") +
+    theme_minimal() +
+    theme(
+        legend.position = "bottom",
+        panel.grid.major = element_line(size = 0.05, color = "grey40"),
+        panel.grid.minor = element_line(size = 0.05, color = "grey40"),
+        panel.background = element_rect(fill = "white"),
+        legend.background = element_rect(fill = "white", linewidth = 0.2),
+        text = element_text(size = 9),
+        axis.text.x = element_text(color = "black", size = 9),
+        axis.text.y = element_text(color = "black", size = 9)
+    ) +
+    guides(size = "none") +
+    scale_color_brewer(palette = "Set1") +
+    scale_x_continuous(breaks = seq(0, 400, by = 50)) +
+    ylim(0, 1) +
+    facet_wrap(~disease) -> history_combined_plot_f1macro
+
+history_combined_plot_f1macro
+
+#ggsave("plots/20251222_learning_history_combined_f1macro.pdf", plot = history_combined_plot_f1macro, width = 6.5, height = 3.5, units = "in", dpi = 300)
+```
+
+
+# F1-Minority Plots
+```{r}
+schiz_history_combined |> 
+    ggplot(aes(x = number_labeled, y = minority_f1, color = method, shape = method, size = number_labeled)) +
+    geom_point() +
+    scale_size(range = c(2, 4)) +
+    geom_line(size = 0.5) +
+    labs(x = "Number of Labeled Samples",
+         y = "Minority F1-Score",
+         color = "Method",
+         shape = "Method",
+         title = "Schizophrenia") +
+    theme_minimal() +
+    theme(
+        legend.position = "bottom",
+        panel.grid.major = element_line(size = 0.05, color = "grey40"),
+        panel.grid.minor = element_line(size = 0.05, color = "grey40"),
+        panel.background = element_rect(fill = "white"),
+        text = element_text(size = 9),
+        axis.text.x = element_text(color = "black", size = 9),
+        axis.text.y = element_text(color = "black", size = 9)
+    ) +
+    guides(size = "none") +
+    scale_color_brewer(palette = "Set1") +
+    scale_x_continuous(breaks = seq(0, 400, by = 50)) +
+    ylim(0, 1) -> schiz_history_plot_f1minority
+
+schiz_history_plot_f1minority
+
+#ggsave("../plots/20251222_schiz_learning_history.pdf", plot = schiz_history_plot_f1minority, width = 5, height = 3.25, units = "in", dpi = 300)
+
+
+dep_history_combined |>
+    ggplot(aes(x = number_labeled, y = minority_f1, color = method, shape = method, size = number_labeled)) +
+    geom_point() +
+    scale_size(range = c(2, 4)) +
+    geom_line(size = 0.5) +
+    labs(x = "Number of Labeled Samples",
+         title = "Depression",
+         y = "Minority F1-Score",
+         color = "Method",
+         shape = "Method") +
+    theme_minimal() +
+    theme(
+        legend.position = "bottom",
+        panel.grid.major = element_line(size = 0.05, color = "grey40"),
+        panel.grid.minor = element_line(size = 0.05, color = "grey40"),
+        panel.background = element_rect(fill = "white"),
+        text = element_text(size = 9),
+        axis.text.x = element_text(color = "black", size = 9),
+        axis.text.y = element_text(color = "black", size = 9)
+    ) +
+    guides(size = "none") +
+    scale_color_brewer(palette = "Set1") +
+    scale_x_continuous(breaks = seq(0, 400, by = 50)) +
+    ylim(0, 1) -> dep_history_plot_f1minority
+
+dep_history_plot_f1minority
+
+#ggsave("../plots/20251222_dep_learning_history.pdf", plot = dep_history_plot_f1minority, width = 5, height = 3.25, units = "in", dpi = 300)
+
+
+history_combined |>
+    ggplot(aes(x = number_labeled, y = minority_f1, color = method, shape = method, size = number_labeled)) +
+    geom_point() +
+    scale_size(range = c(2, 4)) +
+    geom_line(size = 0.5) +
+    labs(x = "Number of Labeled Samples",
+         y = "Minority F1-Score",
+         color = "Method",
+         shape = "Method") +
+    theme_minimal() +
+    theme(
+        legend.position = "bottom",
+        panel.grid.major = element_line(size = 0.05, color = "grey40"),
+        panel.grid.minor = element_line(size = 0.05, color = "grey40"),
+        panel.background = element_rect(fill = "white"),
+        legend.background = element_rect(fill = "white", linewidth = 0.2),
+        text = element_text(size = 9),
+        axis.text.x = element_text(color = "black", size = 9),
+        axis.text.y = element_text(color = "black", size = 9)
+    ) +
+    guides(size = "none") +
+    scale_color_brewer(palette = "Set1") +
+    scale_x_continuous(breaks = seq(0, 400, by = 50)) +
+    ylim(0, 1) +
+    facet_wrap(~disease) -> history_combined_plot_f1minority
+
+history_combined_plot_f1minority
+
+#ggsave("../plots/20260222_learning_history_combined.pdf", plot = history_combined_plot_f1minority, width = 6, height = 7, units = "in", dpi = 300)
+```
+
+
+
+

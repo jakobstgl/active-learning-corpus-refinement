@@ -1,0 +1,85 @@
+# Load Packages
+```{r Load Packages}
+library(tidyverse)
+library(arrow)
+library(quanteda)
+library(conText)
+library(text2vec)
+
+source("stigmascore_functions.R")
+```
+
+# Load pretrained embeddings, compute stigma dimension
+```{r}
+pretrained <- load_pretrained("../data/fastText/fasttext_vectors_dewiki.vec")
+personality_traits <- read_tsv("../data/keywords/personality_traits_translated.txt", locale = locale(encoding = "Latin1")) 
+
+personality_dim <- compute_dimension(personality_traits, pretrained, negative_pole = "neg", positive_pole= "pos")
+
+corpus <- read_parquet("../data/data_for_stigmascores.parquet")
+toks_nostop <- read_rds("../data/preprocessing/toks_nostop_processed.rds")
+
+tokens_psyB <- tokens_subset(toks_nostop, id_subcorpus == "psyB")
+tokens_psyC <- tokens_subset(toks_nostop, id_subcorpus == "psyC")
+```
+
+
+# Retrieve embeddings, grouped by document
+```{r}
+# Load transform matrix to compute a la carte embeddings
+trans_mat <- load("../data/transform_mat_fasttext.rda")
+
+disease_dep <- c("depression")
+disease_schiz <- c("schizophrenie")
+
+embeddings_schiz <- retrieve_embeddings(toks_nostop, disease_schiz, window = 10, pretrained = pretrained, group_by = "dup_id", transform_matrix = trans_mat)
+embeddings_dep <- retrieve_embeddings(toks_nostop, disease_dep, window = 10, pretrained = pretrained, group_by = "dup_id", transform_matrix = trans_mat)
+
+#write_rds(embeddings, "../data/2104_embeddings.rds")
+```
+
+
+# Retrieve stigma scores per document
+```{r Retrieve Scores}
+#embeddings <- read_rds("../data/2104_embeddings.rds")
+
+scores_schiz <- write_scores_doc(embeddings_schiz, personality_dim, toks_nostop, pretrained, document_id = "dup_id")
+scores_dep <- write_scores_doc(embeddings_dep, personality_dim, toks_nostop, pretrained, document_id = "dup_id")
+```
+
+```{r Process scores}
+
+process_scores <- function(scores){
+    scores_processed <- scores |>
+        enframe() |> 
+        unnest(cols = value) |> 
+        mutate(
+            document_id = as.numeric(document_id),
+            stigma_score = as.numeric(stigma_score) |> 
+                round(1)
+        )
+    return(scores_processed)
+}
+
+scores_schiz_processed <- process_scores(scores_schiz)
+scores_dep_processed <- process_scores(scores_dep)
+
+```
+
+# Join stigma scores on corpus
+```{r Join scores on corpus}
+corpus_scores <- corpus |> 
+    left_join(scores_schiz_processed, by = c("id" = "document_id")) |> 
+    left_join(scores_dep_processed, by = c("id" = "document_id")) |>
+    filter(!is.na(stigma_score))
+```
+
+# Export corpus with stigma scores
+```{r}
+#write_parquet(corpus_scores_nonorm, "../data/data_with_stigmascores.parquet")
+```
+
+
+
+
+
